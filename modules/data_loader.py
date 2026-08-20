@@ -3,14 +3,14 @@ import numpy as np
 from pathlib import Path
 import re
 
-def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08-2026.xlsx'):
+def load_and_clean_data(file_obj=None):
     """
     Load dan clean data dari Excel file
 
     Parameters:
     -----------
-    file_path : str
-        Path ke file Excel (default: kecil.xlsx di working directory)
+    file_obj : file-like object or None
+        File object dari st.file_uploader, atau None untuk fallback ke file lokal
 
     Returns:
     --------
@@ -18,22 +18,35 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
         Cleaned dataframe dengan columns yang sudah diproses
     """
 
-    # Try multiple paths
-    possible_paths = [
-        file_path,
-        Path('/mnt/user-data/uploads') / file_path,
-        Path('.') / file_path,
-    ]
-
     df = None
-    for path in possible_paths:
-        if Path(path).exists():
-            print(f"Loading data dari: {path}")
-            df = pd.read_excel(path, sheet_name=0) 
-            break
+    
+    # Jika ada file upload dari Streamlit
+    if file_obj is not None:
+        try:
+            print(f"Loading data dari uploaded file: {file_obj.name}")
+            df = pd.read_excel(file_obj, sheet_name=0)
+        except Exception as e:
+            raise ValueError(f"Gagal membaca file uploaded: {str(e)}")
+    else:
+        # Fallback ke file lokal (untuk testing/development)
+        possible_paths = [
+            '9.GRTREKAGT26-BACA-A_11-08-2026.xlsx',
+            'kecil.xlsx',
+            Path('.') / '9.GRTREKAGT26-BACA-A_11-08-2026.xlsx',
+            Path('.') / 'kecil.xlsx',
+        ]
 
-    if df is None:
-        raise FileNotFoundError(f"File {file_path} tidak ditemukan di {possible_paths}")
+        for path in possible_paths:
+            if Path(path).exists():
+                print(f"Loading data dari file lokal: {path}")
+                df = pd.read_excel(path, sheet_name=0) 
+                break
+
+        if df is None:
+            raise FileNotFoundError(
+                f"Tidak ada file Excel ditemukan. "
+                f"Pilih file via upload Streamlit atau letakkan file di folder project."
+            )
 
     # CLEANING & FEATURE ENGINEERING
     # Drop kolom yang tidak perlu
@@ -63,14 +76,14 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
     elif 'kd_petugas' in df.columns:
         df['kd_petugas'] = df['kd_petugas'].astype(str).str.strip().str.upper()
     else:
-        print("⚠️ Warning: kd_petugas dan kode_rbm tidak ditemukan")
+        print("Warning: kd_petugas dan kode_rbm tidak ditemukan")
         df['kd_petugas'] = 'UNKNOWN'
 
     # Clean customer ID dan nama
     if 'idpel' in df.columns:
         df['idpel'] = df['idpel'].astype(str).str.strip()
     else:
-        print("⚠️ Warning: idpel kolom tidak ditemukan")
+        print("Warning: idpel kolom tidak ditemukan")
         df['idpel'] = 'UNKNOWN'
 
     # Nama pelanggan - try berbagai nama kolom
@@ -82,8 +95,6 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
         df['nama_pelanggan'] = 'N/A'
 
     # Handle koordinat - AUTO-DETECT nama kolom 
-    # Try berbagai kemungkinan nama kolom untuk lintang (Y) dan bujur (X)
-    
     lat_names = ['koordinat_y', 'lat', 'latitude', 'lintang', 'lintang_gps', 'y', 'LATITUDE', 'Latitude']
     lon_names = ['koordinat_x', 'lon', 'long', 'longitude', 'bujur', 'bujur_gps', 'x', 'LONGITUDE', 'Longitude']
     
@@ -105,18 +116,18 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
     # Jika ditemukan, rename ke standard name dan convert to numeric
     if lat_col and lon_col:
         df.rename(columns={lat_col: 'koordinat_y', lon_col: 'koordinat_x'}, inplace=True)
-        print(f"✅ Auto-detected GPS columns: '{lat_col}' (Y) → koordinat_y, '{lon_col}' (X) → koordinat_x")
+        print(f"Auto-detected GPS columns: {lat_col} (Y), {lon_col} (X)")
     elif lat_col and not lon_col:
         df.rename(columns={lat_col: 'koordinat_y'}, inplace=True)
-        print(f"⚠️ Found lintang column '{lat_col}', but bujur column not found")
+        print(f"Found lintang column {lat_col}, but bujur column not found")
         df['koordinat_x'] = 0
     elif lon_col and not lat_col:
         df.rename(columns={lon_col: 'koordinat_x'}, inplace=True)
-        print(f"⚠️ Found bujur column '{lon_col}', but lintang column not found")
+        print(f"Found bujur column {lon_col}, but lintang column not found")
         df['koordinat_y'] = 0
     else:
-        print(f"⚠️ GPS columns not found. Peta tidak akan muncul di dashboard.")
-        print(f"   Available columns: {list(df.columns)}")
+        print(f"GPS columns not found. Peta tidak akan muncul di dashboard.")
+        print(f"Available columns: {list(df.columns)}")
         df['koordinat_x'] = 0
         df['koordinat_y'] = 0
     
@@ -131,7 +142,7 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
     else:
         df['koordinat_y'] = 0
 
-    # 10. Handle meter reading values
+    # Handle meter reading values
     df['ada_pembacaan_aktual'] = pd.to_numeric(df['stand_baca'] if 'stand_baca' in df.columns else 0, errors='coerce').notna()
 
     if 'stand_baca' in df.columns:
@@ -149,17 +160,17 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
     else:
         df['pemkwh'] = 0.0
 
-    # 10b. Buang baris tanpa pembacaan aktual
+    # Buang baris tanpa pembacaan aktual
     n_before = len(df)
     df = df[df['ada_pembacaan_aktual']].drop(columns=['ada_pembacaan_aktual']).reset_index(drop=True)
     n_dropped = n_before - len(df)
     if n_dropped > 0:
-        print(f"✅ {n_dropped} baris tanpa pembacaan aktual dibuang dari statistik")
+        print(f"Rows without active reading removed: {n_dropped}")
 
-    # 11. Sort by time
+    # Sort by time
     df = df.sort_values(['tanggal_pembacaan', 'jam_pembacaan_menit']).reset_index(drop=True)
 
-    # 12. Select final columns
+    # Select final columns
     final_columns = [
         'tanggal_pembacaan', 'jam_pembacaan', 'jam_pembacaan_menit', 'jam', 'menit', 'shift',
         'kd_petugas', 'nama_pelanggan', 'idpel',
@@ -169,18 +180,18 @@ def load_and_clean_data(file_path='D:\\dashboard-pln\\9.GRTREKAGT26-BACA-A_11-08
 
     df = df[[col for col in final_columns if col in df.columns]]
 
-    # 13. Validate
-    print(f"\n✅ Data loaded: {len(df)} rows × {len(df.columns)} columns")
-    print(f"   Unique petugas: {df['kd_petugas'].nunique()}")
-    print(f"   Unique pelanggan: {df['idpel'].nunique()}")
-    print(f"   Date range: {df['tanggal_pembacaan'].min()} to {df['tanggal_pembacaan'].max()}")
+    # Validate
+    print(f"\nData loaded: {len(df)} rows x {len(df.columns)} columns")
+    print(f"Unique petugas: {df['kd_petugas'].nunique()}")
+    print(f"Unique pelanggan: {df['idpel'].nunique()}")
+    print(f"Date range: {df['tanggal_pembacaan'].min()} to {df['tanggal_pembacaan'].max()}")
     
     # Cek GPS data
     valid_gps = len(df[(df['koordinat_x'] != 0) & (df['koordinat_y'] != 0)])
     if valid_gps > 0:
-        print(f"   Valid GPS points: {valid_gps} (peta akan ditampilkan ✅)")
+        print(f"Valid GPS points: {valid_gps}")
     else:
-        print(f"   Valid GPS points: 0 (peta fallback akan ditampilkan ⚠️)")
+        print(f"Valid GPS points: 0")
 
     return df
 

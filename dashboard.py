@@ -208,23 +208,36 @@ st.markdown("""
 st.markdown("""
 <div class="info-box">
 <b>Dashboard ini membantu Anda memahami:</b>
-<br>• Jam dan waktu pembacaan meter
-<br>• Performa dan produktivitas setiap petugas
-<br>• Jangkauan area kerja geografis
+<br>* Jam dan waktu pembacaan meter
+<br>* Performa dan produktivitas setiap petugas
+<br>* Jangkauan area kerja geografis
 </div>
 """, unsafe_allow_html=True)
 
+# FILE UPLOADER
+st.sidebar.header("Upload Data")
+uploaded_file = st.sidebar.file_uploader(
+    "Pilih file Excel (.xlsx)",
+    type=["xlsx"],
+    help="Format: GRTREKAGT26-BACA-A_*.xlsx atau format dengan kolom: KD_PETUGAS, JAM_PEMBACAAN, TANGGAL_PEMBACAAN, KOORDINAT_X, KOORDINAT_Y, IDPEL, NAMA"
+)
+
 # LOAD DATA
 @st.cache_data
-def load_data():
-    return load_and_clean_data()
+def load_data(file_obj):
+    return load_and_clean_data(file_obj)
 
-try:
-    df = load_data()
-    data_loaded = True
-except Exception as e:
-    st.error(f"Gagal membaca file: {str(e)}")
-    st.info("Pastikan file **kecil.xlsx** ada di folder yang sama dengan script ini")
+if uploaded_file is not None:
+    try:
+        df = load_data(uploaded_file)
+        data_loaded = True
+        st.sidebar.success(f"File loaded: {uploaded_file.name}")
+    except Exception as e:
+        st.error(f"Gagal membaca file: {str(e)}")
+        st.info("Pastikan format Excel sesuai: kolom harus punya KD_PETUGAS, JAM_PEMBACAAN, TANGGAL_PEMBACAAN, dst")
+        data_loaded = False
+else:
+    st.info("Upload file Excel di sidebar kiri untuk memulai dashboard")
     data_loaded = False
 
 if data_loaded:
@@ -337,10 +350,6 @@ if data_loaded:
     jumlah_pelanggan = df_filtered['idpel'].nunique()
     rata_per_petugas = total_pembacaan / jumlah_petugas if jumlah_petugas > 0 else 0
 
-    # KPI "Per Pelanggan" (selalu 1.00 karena tiap pelanggan hanya
-    # punya satu pembacaan per periode, sehingga tidak informatif)
-    # diganti dengan persentase aktivitas pada jam sibuk 06:00-16:00,
-    # yang jadi insight utama dashboard ini.
     kpi_activity = calculate_activity_insight(df_filtered, start_hour=6, end_hour=16)
     kpi_activity_pct = kpi_activity['pct'] if kpi_activity else 0
 
@@ -362,10 +371,10 @@ if data_loaded:
     # TABS
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        " Distribusi Waktu",
-        " Ranking Petugas",
-        " Detail Petugas",
-        " Area Geografis"
+        "Distribusi Waktu",
+        "Ranking Petugas",
+        "Detail Petugas",
+        "Area Geografis"
     ])
 
     # ====== TAB 1: DISTRIBUSI WAKTU ======
@@ -375,9 +384,9 @@ if data_loaded:
         st.markdown("""
         <div class="tip-box">
         <b>Apa yang dilihat di sini:</b>
-        <br>• Jam berapa petugas biasanya membaca meter
-        <br>• Persentase pembacaan per shift (Pagi, Siang, Sore, Malam)
-        <br>• Pola kerja reguler atau tidak
+        <br>* Jam berapa petugas biasanya membaca meter
+        <br>* Persentase pembacaan per shift (Pagi, Siang, Sore, Malam)
+        <br>* Pola kerja reguler atau tidak
         </div>
         """, unsafe_allow_html=True)
 
@@ -413,7 +422,7 @@ if data_loaded:
         time_stats = calculate_time_metrics(df_filtered)
         st.dataframe(time_stats, use_container_width=True, hide_index=True)
         st.caption(
-            "ℹ \"Pembacaan Paling Awal/Akhir\" adalah jam pembacaan meter "
+            "Info: Pembacaan Paling Awal/Akhir adalah jam pembacaan meter "
             "yang tercatat di sistem, bukan jam mulai/selesai kerja resmi "
             "petugas (data tidak mencatat jam clock-in/clock-out)."
         )
@@ -423,7 +432,7 @@ if data_loaded:
         if activity_insight:
             st.markdown(f"""
             <div class="info-box">
-             <b>Insight:</b> {activity_insight['pct']:.1f}% aktivitas pembacaan
+            <b>Insight:</b> {activity_insight['pct']:.1f}% aktivitas pembacaan
             ({activity_insight['count']:,} dari {activity_insight['total']:,} pembacaan)
             terjadi antara pukul {activity_insight['start_hour']:02d}:00–{activity_insight['end_hour']:02d}:00
             (shift Pagi + Siang).
@@ -437,14 +446,14 @@ if data_loaded:
         st.markdown("""
         <div class="tip-box">
         <b>Ranking berdasarkan 4 kriteria:</b>
-        <br> <b>Total Pembacaan</b> - Berapa banyak meter dibaca
-        <br> <b>Konsistensi</b> - Seberapa teratur jam kerjanya
-        <br> <b>Efisiensi</b> - Seberapa luas area kerjanya
-        <br> <b>Kecepatan</b> - Seberapa cepat bergerak antar lokasi
+        <br><b>Total Pembacaan</b> - Berapa banyak meter dibaca
+        <br><b>Konsistensi</b> - Seberapa teratur jam kerjanya
+        <br><b>Efisiensi</b> - Seberapa luas area kerjanya
+        <br><b>Kecepatan</b> - Seberapa cepat bergerak antar lokasi
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander("Bagaimana Score 0–100 dihitung?"):
+        with st.expander("Bagaimana Score 0-100 dihitung?"):
             st.markdown(get_score_explanation())
 
         # Calculate ranking
@@ -466,7 +475,6 @@ if data_loaded:
         # Ranking chart
         st.markdown("### Ranking Score")
         fig_rank = plot_ranking_chart(ranking_df)
-        # Update chart untuk dark mode
         fig_rank.update_layout(
             paper_bgcolor='#0F1419',
             plot_bgcolor='#161B22',
@@ -508,7 +516,7 @@ if data_loaded:
 
         st.markdown("---")
 
-        # Rekomendasi operasional berdasarkan hasil analisis data
+        # Rekomendasi operasional
         st.markdown("### Rekomendasi Operasional")
         recommendations = generate_operational_recommendations(ranking_df, df_filtered)
         if recommendations:
@@ -525,7 +533,7 @@ if data_loaded:
         st.markdown("---")
 
         # Heatmap
-        st.markdown("### Pola Kerja Harian (Petugas × Jam)")
+        st.markdown("### Pola Kerja Harian (Petugas x Jam)")
         fig_heat = plot_heatmap_petugas_jam(df_filtered)
         fig_heat.update_layout(
             paper_bgcolor='#0F1419',
@@ -542,9 +550,9 @@ if data_loaded:
         st.markdown("""
         <div class="tip-box">
         <b>Pilih satu petugas untuk melihat:</b>
-        <br>• Jam dan pola kerja mereka
-        <br>• Konsistensi dan trend produktivitas
-        <br>• Area dan jangkauan geografis
+        <br>* Jam dan pola kerja mereka
+        <br>* Konsistensi dan trend produktivitas
+        <br>* Area dan jangkauan geografis
         </div>
         """, unsafe_allow_html=True)
 
@@ -620,17 +628,17 @@ if data_loaded:
         )
         st.plotly_chart(fig_ts, use_container_width=True)
 
-    #AREA GEOGRAFIS
+    # AREA GEOGRAFIS
     with tab4:
         st.markdown("## Jangkauan Area Kerja")
 
         st.markdown("""
         <div class="tip-box">
         <b>Peta Interaktif:</b>
-        <br>• Marker otomatis mengelompok (cluster) saat zoom out, pecah jadi titik individual saat zoom in
-        <br>• Klik marker untuk lihat detail pelanggan, petugas, dan pemakaian kWh
-        <br>• Warna marker menunjukkan shift pembacaan
-        <br>• Toggle layer shift, ganti basemap, fullscreen, dan alat ukur jarak tersedia di kontrol kanan/kiri atas peta
+        <br>* Marker otomatis mengelompok (cluster) saat zoom out, pecah jadi titik individual saat zoom in
+        <br>* Klik marker untuk lihat detail pelanggan, petugas, dan pemakaian kWh
+        <br>* Warna marker menunjukkan shift pembacaan
+        <br>* Toggle layer shift, ganti basemap, fullscreen, dan alat ukur jarak tersedia di kontrol peta
         </div>
         """, unsafe_allow_html=True)
 
@@ -650,10 +658,9 @@ if data_loaded:
             folium_static(folium_map, width=1100, height=600)
         except Exception as e:
             st.error(
-                "Peta gagal dirender. Kemungkinan penyebab paling umum: "
+                "Peta gagal dirender. Kemungkinan penyebab: "
                 "koneksi internet ke tile map (CartoDB/OpenStreetMap) dan skrip "
-                "plugin (cluster, fullscreen, minimap, alat ukur) diblokir "
-                "firewall/proxy jaringan. Detail error teknis di bawah:"
+                "plugin diblokir firewall/proxy jaringan."
             )
             st.exception(e)
 
@@ -680,7 +687,7 @@ if data_loaded:
         area_df = pd.DataFrame(area_stats)
         st.dataframe(area_df, use_container_width=True, hide_index=True)
 
-    #Footer
+    # Footer
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #8B949E; padding: 2rem;'>
